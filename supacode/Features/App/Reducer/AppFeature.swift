@@ -1100,7 +1100,7 @@ struct AppFeature {
             return sendSocketResponse(
               clientFD: responseFD, ok: false, error: "Invalid deeplink: \(url.absoluteString)")
           }
-          if url.scheme == "supacode" {
+          if Deeplink.acceptedSchemes.contains(url.scheme ?? "") {
             state.alert = AlertState {
               TextState("Invalid deeplink")
             } actions: {
@@ -3261,7 +3261,7 @@ struct AppFeature {
           + "degrading tap deeplink to the worktree root."
       )
       return urlOrWarn(
-        "supacode://worktree/\(encodedWorktreeID)",
+        "\(Deeplink.scheme)://worktree/\(encodedWorktreeID)",
         worktreeID: worktreeID,
         surfaceID: surfaceID
       )
@@ -3269,7 +3269,7 @@ struct AppFeature {
     let tabRaw = tabID.rawValue.uuidString
     let surfaceRaw = surfaceID.uuidString
     return urlOrWarn(
-      "supacode://worktree/\(encodedWorktreeID)/tab/\(tabRaw)/surface/\(surfaceRaw)",
+      "\(Deeplink.scheme)://worktree/\(encodedWorktreeID)/tab/\(tabRaw)/surface/\(surfaceRaw)",
       worktreeID: worktreeID,
       surfaceID: surfaceID
     )
