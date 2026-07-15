@@ -10,7 +10,7 @@ public struct AppearanceSettingsView: View {
   }
 
   public var body: some View {
-    let openActionOptions = OpenWorktreeAction.availableCases
+    let openActionOptions = store.installedOpenActions
     Form {
       Section {
         LabeledContent("Appearance") {
@@ -59,9 +59,36 @@ public struct AppearanceSettingsView: View {
           )
         }
       }
+      Section {
+        LabeledContent("Visibility") {
+          HStack(spacing: 12) {
+            ForEach(AppVisibility.allCases) { visibility in
+              AppVisibilityOptionCardView(
+                visibility: visibility,
+                isSelected: visibility == store.appVisibility
+              ) {
+                store.send(.setAppVisibility(visibility))
+              }
+            }
+          }
+        }
+      }
       Section("Editor") {
+        // The stored id deliberately keeps naming an uninstalled editor, so the choice
+        // survives a reinstall. No row is tagged with it though, and an untagged
+        // selection renders blank, so normalize for display and write back raw.
+        let storedEditorID = $store.defaultEditorID
+        let defaultEditorID = Binding(
+          get: {
+            OpenWorktreeAction.normalizedDefaultEditorID(
+              storedEditorID.wrappedValue,
+              installed: openActionOptions
+            )
+          },
+          set: { storedEditorID.wrappedValue = $0 }
+        )
         Picker(
-          selection: $store.defaultEditorID
+          selection: defaultEditorID
         ) {
           Text("Automatic")
             .tag(OpenWorktreeAction.automaticSettingsID)
@@ -93,9 +120,9 @@ public struct AppearanceSettingsView: View {
           Text("Hide Tab Bar for Single Tab")
           Text("Automatically hides the tab bar when only one tab is open.")
         }
-        Toggle(isOn: $store.confirmCloseTabsWithRunningProcesses) {
-          Text("Confirm before Closing Tabs")
-          Text("Ask before closing a tab that has running terminal processes.")
+        Toggle(isOn: $store.confirmCloseSurface) {
+          Text("Confirm before Closing Terminals")
+          Text("Ask before closing a terminal that has a running process.")
         }
         Picker(selection: $store.automatedActionPolicy.sending(\.setAutomatedActionPolicy)) {
           ForEach(AutomatedActionPolicy.allCases, id: \.self) { policy in

@@ -46,7 +46,7 @@ final class GhosttyRuntime {
   }
   var onConfigChange: (() -> Void)?
 
-  init() {
+  init(initialColorScheme: ColorScheme? = nil) {
     guard let loaded = Self.loadConfig() else {
       preconditionFailure("ghostty_config_new failed")
     }
@@ -116,6 +116,11 @@ final class GhosttyRuntime {
           ghostty_app_keyboard_changed(app)
         }
       })
+
+    // Seed the resolved scheme so `backgroundColor()` (the window tint +
+    // appearance source) reads the user's real light/dark theme before the
+    // first paint, not Ghostty's default-light resolution.
+    setColorScheme(initialColorScheme ?? Self.resolvedLaunchColorScheme())
   }
 
   isolated deinit {
@@ -143,6 +148,21 @@ final class GhosttyRuntime {
     if let app {
       ghostty_app_tick(app)
     }
+  }
+
+  // The user's appearance preference resolved against the live system scheme,
+  // used to seed Ghostty's theme conditional before the first paint.
+  private static func resolvedLaunchColorScheme() -> ColorScheme {
+    @Shared(.settingsFile) var settingsFile
+    return settingsFile.global.appearanceMode.resolved(systemColorScheme: systemColorScheme())
+  }
+
+  // Read the system appearance without `NSApp`, which is still nil while the
+  // runtime is built during `SupacodeApp.init`. `GhosttyColorSchemeSyncView`
+  // later reconciles against `NSApp.effectiveAppearance` (a no-op when equal),
+  // so this only needs to be right for the first paint.
+  private static func systemColorScheme() -> ColorScheme {
+    UserDefaults.standard.string(forKey: "AppleInterfaceStyle") == "Dark" ? .dark : .light
   }
 
   func setColorScheme(_ scheme: ColorScheme) {
@@ -546,8 +566,8 @@ final class GhosttyRuntime {
     return min(max(value, 0), 1)
   }
 
-  /// Applies Supacode-specific config (padding values) that takes precedence
-  /// over user settings.
+  /// Applies Supacode-specific config that takes precedence over user
+  /// settings.
   ///
   /// No `background-opacity` override: surfaces render translucent at the
   /// theme's opacity and keep their own OSC 11 color. The window tint behind
@@ -558,9 +578,15 @@ final class GhosttyRuntime {
   /// override): surfaces run the real shell with zmx injected as a Ghostty
   /// `command-wrapper`, so Ghostty resolves and integrates the shell exactly as
   /// it would without zmx, honoring the user's `command` / `shell-integration`.
+  ///
+  /// Supacode owns close-confirmation policy and UI. Keeping Ghostty's
+  /// predicate enabled makes its callback report prompt safety independently
+  /// of the user's Ghostty setting; `GlobalSettings.confirmCloseSurface`
+  /// decides whether Supacode presents the alert.
   internal static let bundledOverridesString = """
     window-padding-x = 14
     window-padding-y = 12,0
+    confirm-close-surface = true
     """
 
   /// Reports Supacode in `TERM_PROGRAM` so programs detect the real host
@@ -799,9 +825,11 @@ extension Notification.Name {
   // move or OSC 11), so window chrome re-tints to follow it.
   static let ghosttyFocusedSurfaceBackgroundDidChange = Notification.Name(
     "ghosttyFocusedSurfaceBackgroundDidChange")
-  // Posted when a surface view's frame changes (layout, split resize, attach),
-  // so `WindowTintBackdrop` re-cuts the holes it masks out for the surfaces.
-  static let ghosttySurfaceFrameDidChange = Notification.Name("ghosttySurfaceFrameDidChange")
+  // Posted when a tint mask region (the terminal body container) lays out or
+  // attaches/detaches from its window, so `WindowTintBackdrop` re-cuts the hole
+  // it masks out of the window tint. Handled synchronously so the mask never lags
+  // a frame behind the region: a stale hole flashes the transparent backing.
+  static let ghosttyTintMaskRegionDidChange = Notification.Name("ghosttyTintMaskRegionDidChange")
 }
 
 extension NSColor {
