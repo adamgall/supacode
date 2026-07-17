@@ -13,6 +13,7 @@ struct TerminalTabView: View {
   /// observation-tracked fields (agents, unseen count, progress display) so
   /// per-tab mutations invalidate only this leaf, not sibling tabs.
   let tabStore: StoreOf<TerminalTabFeature>
+  let isLifecycleBusy: Bool
   let onSelect: () -> Void
   let onClose: () -> Void
   let onDismissSplitZoom: () -> Void
@@ -41,6 +42,7 @@ struct TerminalTabView: View {
           isHoveringTab: isHovering,
           isHoveringClose: isHoveringClose,
           tabStore: tabStore,
+          isLifecycleRepresentative: isActive && isLifecycleBusy,
         )
       }
       .buttonStyle(TerminalTabButtonStyle(isPressing: $isPressing))

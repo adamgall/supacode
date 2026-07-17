@@ -1835,7 +1835,13 @@ struct AppFeature {
     var affectedSurfaces: Set<UUID> = []
     for rowID in rowIDs {
       guard let row = state.repositories.sidebarItems[id: rowID] else { continue }
-      let snapshot = presence.rowSnapshot(across: row.surfaceIDs, badgesEnabled: badgesEnabled)
+      var snapshot = presence.rowSnapshot(across: row.surfaceIDs, badgesEnabled: badgesEnabled)
+      let tabs = state.terminals.terminalTabs.filter { $0.worktreeID == row.id }
+      if !tabs.isEmpty {
+        snapshot.isWorking = tabs.contains {
+          presence.rowSnapshot(across: $0.surfaceIDs, badgesEnabled: false).isWorking
+        }
+      }
       effects.append(
         .send(
           .repositories(
@@ -1850,9 +1856,9 @@ struct AppFeature {
     // mutations don't invalidate sibling tab leaves.
     for tab in state.terminals.terminalTabs
     where tab.surfaceIDs.contains(where: affectedSurfaces.contains) {
-      let agents = presence.agents(across: tab.surfaceIDs, badgesEnabled: badgesEnabled)
+      let snapshot = presence.rowSnapshot(across: tab.surfaceIDs, badgesEnabled: badgesEnabled)
       effects.append(
-        .send(.terminals(.terminalTabs(.element(id: tab.id, action: .agentSnapshotChanged(agents)))))
+        .send(.terminals(.terminalTabs(.element(id: tab.id, action: .agentSnapshotChanged(snapshot)))))
       )
     }
     return .merge(effects)

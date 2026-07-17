@@ -21,6 +21,8 @@ struct WorktreeTabProjection: Equatable, Sendable {
   let surfaceIDs: [UUID]
   let activeSurfaceID: UUID?
   let unseenNotificationCount: Int
+  /// Ghostty progress or a blocking script is active in this tab.
+  let isProgressBusy: Bool
   let isSplitZoomed: Bool
   /// Per-tab repaint epoch, bumped on same-UUID surface replacement so the view rebuilds.
   let surfaceGeneration: Int
@@ -30,6 +32,7 @@ struct WorktreeTabProjection: Equatable, Sendable {
     surfaceIDs: [UUID],
     activeSurfaceID: UUID?,
     unseenNotificationCount: Int,
+    isProgressBusy: Bool = false,
     isSplitZoomed: Bool = false,
     surfaceGeneration: Int = 0,
   ) {
@@ -37,6 +40,7 @@ struct WorktreeTabProjection: Equatable, Sendable {
     self.surfaceIDs = surfaceIDs
     self.activeSurfaceID = activeSurfaceID
     self.unseenNotificationCount = unseenNotificationCount
+    self.isProgressBusy = isProgressBusy
     self.isSplitZoomed = isSplitZoomed
     self.surfaceGeneration = surfaceGeneration
   }
@@ -242,8 +246,9 @@ final class WorktreeTerminalState {
     self.shouldHideTabBar = settingsFile.global.hideSingleTabBar
   }
 
+  /// Workspace progress is the OR of its per-tab activity projections.
   var taskStatus: WorktreeTaskStatus {
-    trees.keys.contains(where: { isTabBusy($0) }) ? .running : .idle
+    lastTabProjections.values.contains(where: \.isProgressBusy) ? .running : .idle
   }
 
   private func isTabBusy(_ tabId: TerminalTabID) -> Bool {
@@ -528,6 +533,7 @@ final class WorktreeTerminalState {
     }
     lastBlockingScriptTabByKind[kind] = tabId
     tabManager.updateDirty(tabId, isDirty: true)
+    emitTabProjection(for: tabId)
     emitTaskStatusIfChanged()
 
     blockingScriptLogger.info("Started \(kind.tabTitle) for worktree \(worktree.id)")
@@ -1514,6 +1520,7 @@ final class WorktreeTerminalState {
     reportedTabId: TerminalTabID?
   ) {
     tabManager.markBlockingScriptCompleted(tabId)
+    emitTabProjection(for: tabId)
     freezeBlockingScriptSurfaces(in: tabId)
     emitTaskStatusIfChanged()
 
@@ -2345,6 +2352,7 @@ final class WorktreeTerminalState {
     // resurrect the dirty shimmer on a tab the user reads as done.
     let isFrozen = isBlockingScriptCompleted(tabId)
     tabManager.updateDirty(tabId, isDirty: isFrozen ? false : isTabBusy(tabId))
+    emitTabProjection(for: tabId)
     emitTabProgressDisplay(for: tabId)
     emitTaskStatusIfChanged()
   }
@@ -2464,6 +2472,7 @@ final class WorktreeTerminalState {
       surfaceIDs: surfaceIDs,
       activeSurfaceID: focusedSurfaceIdByTab[tabId],
       unseenNotificationCount: unseenCount,
+      isProgressBusy: tabManager.tabs.first(where: { $0.id == tabId })?.isDirty == true,
       isSplitZoomed: tree.zoomed != nil,
       surfaceGeneration: surfaceGenerationByTab[tabId, default: 0],
     )

@@ -66,6 +66,15 @@ struct AppFeatureSettingsChangedTests {
     appState.agentPresence.records[
       AgentPresenceFeature.PresenceKey(agent: .claude, surfaceID: surfaceID)
     ] = AgentPresenceFeature.PresenceRecord(activity: .busy, pids: [42])
+    let tabID = TerminalTabID(rawValue: UUID())
+    appState.terminals.terminalTabs.append(
+      TerminalTabFeature.State(
+        id: tabID,
+        worktreeID: worktree.id,
+        surfaceIDs: [surfaceID],
+        agentSnapshot: .init(agents: [agent], isWorking: true)
+      )
+    )
 
     let store = TestStore(initialState: appState) {
       AppFeature()
@@ -82,6 +91,15 @@ struct AppFeatureSettingsChangedTests {
       $0.repositories.sidebarItems[id: worktree.id]?.agentSnapshot.agents = []
       $0.repositories.sidebarItems[id: worktree.id]?.agentSnapshot.isWorking = true
     }
+    await store.receive(\.terminals.terminalTabs[id: tabID].agentSnapshotChanged) {
+      $0.terminals.terminalTabs[id: tabID]?.agentSnapshot = .init(isWorking: true)
+    }
+    #expect(store.state.terminals.terminalTabs[id: tabID]?.agents.isEmpty == true)
+    #expect(
+      store.state.terminals.terminalTabs[id: tabID]?.shouldShimmer(
+        isLifecycleRepresentative: false
+      ) == true
+    )
     await store.finish()
     #expect(store.state.lastKnownAgentPresenceBadgesEnabled == false)
 
@@ -91,6 +109,12 @@ struct AppFeatureSettingsChangedTests {
       \.repositories.sidebarItems[id: worktree.id].agentSnapshotChanged
     ) {
       $0.repositories.sidebarItems[id: worktree.id]?.agentSnapshot.agents = [agent]
+    }
+    await store.receive(\.terminals.terminalTabs[id: tabID].agentSnapshotChanged) {
+      $0.terminals.terminalTabs[id: tabID]?.agentSnapshot = .init(
+        agents: [agent],
+        isWorking: true
+      )
     }
     await store.finish()
     #expect(store.state.lastKnownAgentPresenceBadgesEnabled == true)

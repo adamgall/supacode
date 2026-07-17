@@ -102,6 +102,43 @@ struct AgentBusyStateTests {
     #expect(!presence.state.hasActivity(in: surfaces))
   }
 
+  @Test func workspaceProgressRollsUpFromEveryTab() {
+    let manager = WorktreeTerminalManager(runtime: GhosttyRuntime())
+    let worktree = makeWorktree()
+
+    manager.handleCommand(.runBlockingScript(worktree, kind: .archive, script: "echo a"))
+    manager.handleCommand(.runBlockingScript(worktree, kind: .delete, script: "echo b"))
+
+    guard let state = manager.stateIfExists(for: worktree.id) else {
+      Issue.record("Expected worktree state")
+      return
+    }
+    let tabs = state.tabManager.tabs.map(\.id)
+    guard tabs.count == 2,
+      let surfaceA = state.splitTree(for: tabs[0]).root?.leftmostLeaf(),
+      let surfaceB = state.splitTree(for: tabs[1]).root?.leftmostLeaf()
+    else {
+      Issue.record("Expected one surface in each tab")
+      return
+    }
+
+    #expect(state.currentTabProjections().allSatisfy { $0.isProgressBusy })
+    #expect(state.currentProjection().isProgressBusy)
+
+    surfaceA.bridge.onCommandFinished?(0)
+    #expect(
+      state.currentTabProjections().first(where: { $0.tabID == tabs[0] })?.isProgressBusy == false
+    )
+    #expect(
+      state.currentTabProjections().first(where: { $0.tabID == tabs[1] })?.isProgressBusy == true
+    )
+    #expect(state.currentProjection().isProgressBusy)
+
+    surfaceB.bridge.onCommandFinished?(0)
+    #expect(state.currentTabProjections().allSatisfy { !$0.isProgressBusy })
+    #expect(!state.currentProjection().isProgressBusy)
+  }
+
   // MARK: - Notification deduplication.
 
   @Test(.dependencies) func hookNotificationRecordedForDedup() {
